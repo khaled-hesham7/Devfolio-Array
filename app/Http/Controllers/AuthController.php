@@ -13,23 +13,32 @@ class AuthController extends Controller
 {
     public function register(RegisterRequest $request)
     {
+        // التحقق من المفتاح السري
+        $secret = $request->header('Khaled-Security');
+
+        if ($secret !== env('REGISTER_SECRET_KEY')) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+
+        
+
         $user = User::create([
             'name'     => $request->name,
             'email'    => $request->email,
             'password' => Hash::make($request->password),
         ]);
 
-       
 
         return response()->json([
             'message' => 'تم التسجيل بنجاح',
             'user'    => $user,
-            
+
         ], 201);
     }
 
-    
-      public function login(LoginRequest $request)
+
+    public function login(LoginRequest $request)
     {
         // هنجيب اليوزر بالايميل
         $user = User::where('email', $request->email)->first();
