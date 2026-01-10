@@ -7,16 +7,20 @@ use App\Models\ArticleLike;
 use App\Models\ArticleView;
 use Illuminate\Http\Request;
 use App\Http\Resources\ArticleResource;
+use Illuminate\Support\Facades\Storage;
 
 class ArticleController extends Controller
 {
+    /**
+     * إضافة مقال جديد
+     */
     public function store(Request $request)
     {
         $request->validate([
             'title' => 'required|string|max:255',
             'excerpt' => 'required|string',
             'lang' => 'required|string',
-            'content' => 'required|json', // array of items (title, text)
+            'content' => 'required|json', 
             'tags' => 'nullable|array',
             'feature_image' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp',
             'feature_video' => 'nullable|file|mimes:mp4,mov,avi,wmv',
@@ -24,46 +28,39 @@ class ArticleController extends Controller
             'content_videos.*.*' => 'nullable|file|mimes:mp4,mov,avi,wmv',
         ]);
 
-        // رفع الصورة المميزة
+        // رفع المرفقات الرئيسية
         $featureImagePath = $request->hasFile('feature_image')
             ? $request->file('feature_image')->store('articles/images', 'public')
             : null;
 
-        // رفع الفيديو المميز
         $featureVideoPath = $request->hasFile('feature_video')
             ? $request->file('feature_video')->store('articles/videos', 'public')
             : null;
 
-        // تحويل الـ content من JSON إلى array
         $content = json_decode($request->input('content'), true) ?? [];
 
-        // نضيف الصور والفيديوهات لو موجودة
         foreach ($content as $i => &$item) {
             $item['title'] = $item['title'] ?? null;
             $item['text'] = $item['text'] ?? null;
+            $item['code'] = $item['code'] ?? null; // التأكد من استلام الكود البرمجي
 
-            // رفع الصور الخاصة بهذا الجزء
             $images = [];
             if ($request->hasFile("content_images.$i")) {
                 foreach ($request->file("content_images.$i") as $imageFile) {
-                    $path = $imageFile->store('articles/images', 'public');
-                    $images[] = asset('storage/' . $path);
+                    $images[] = $imageFile->store('articles/images', 'public');
                 }
             }
             $item['images'] = $images;
 
-            // رفع الفيديوهات الخاصة بهذا الجزء
             $videos = [];
             if ($request->hasFile("content_videos.$i")) {
                 foreach ($request->file("content_videos.$i") as $videoFile) {
-                    $path = $videoFile->store('articles/videos', 'public');
-                    $videos[] = asset('storage/' . $path);
+                    $videos[] = $videoFile->store('articles/videos', 'public');
                 }
             }
             $item['videos'] = $videos;
         }
 
-        // حفظ المقال
         $article = Article::create([
             'title' => $request->title,
             'excerpt' => $request->excerpt,
@@ -72,100 +69,84 @@ class ArticleController extends Controller
             'feature_video' => $featureVideoPath,
             'content' => $content,
             'tags' => $request->tags ?? [],
-            'author_id' => auth()->id() ?? 1,
+            'author_id' => auth()->id(), // تم التعديل: الاعتماد على المستخدم المسجل فعلياً للأمان
             'date' => now(),
         ]);
-        return response()->json([
-            'message' => 'Article added successfully'
-        ], 201);
 
-
-        // return (new ArticleResource($article))
-        //     ->additional(['message' => 'Article added successfully'])
-        //     ->response()
-        //     ->setStatusCode(201);
+        return response()->json(['message' => 'Article added successfully'], 201);
     }
 
-    // ===================================================//
-    // ===================================================//
-    // ===================================================//
-
+    /**
+     * عرض قائمة المقالات (مع حل مشكلة الـ N+1)
+     */
     public function index(Request $request)
     {
         $perPage = $request->input('per_page', 5);
+        $ip = $request->ip();
+
         if ($perPage <= 50) {
-            $articles = Article::paginate($perPage);
+            $articles = Article::with(['author']) 
+                ->withCount(['likesRelation as likes_relation_count']) 
+                ->withExists(['likesRelation as is_liked' => function($query) use ($ip) {
+                    $query->where('ip_address', $ip); 
+                }])
+                ->latest() // ترتيب الأحدث أولاً
+                ->paginate($perPage);
+
             return ArticleResource::collection($articles);
-        } else {
-            return response()->json([
-                'message' => 'Maximum perPage value is 10'
-            ], 400);
         }
+
+        return response()->json(['message' => 'Maximum perPage value is 50'], 400);
     }
-    // ==================================//
-    // ==================================//    
 
-
+    /**
+     * تحديث مقال موجود
+     */
     public function update(Request $request, $id)
     {
         $article = Article::findOrFail($id);
 
         $request->validate([
             'title' => 'sometimes|required|string|max:255',
-            'excerpt' => 'sometimes|required|string',
-            'lang' => 'sometimes|required|string',
             'content' => 'nullable|json',
-            'tags' => 'nullable|array',
-            'feature_image' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp',
-            'feature_video' => 'nullable|file|mimes:mp4,mov,avi,wmv',
-            'content_images.*.*' => 'nullable|file|mimes:jpg,jpeg,png,gif',
-            'content_videos.*.*' => 'nullable|file|mimes:mp4,mov,avi,wmv',
         ]);
 
-        // لو فيه feature image جديدة ارفعها
         if ($request->hasFile('feature_image')) {
-            $featureImagePath = $request->file('feature_image')->store('articles/images', 'public');
-            $article->feature_image = $featureImagePath;
+            // مسح القديم لو حبيت توفر مساحة
+            if($article->feature_image) Storage::disk('public')->delete($article->feature_image);
+            $article->feature_image = $request->file('feature_image')->store('articles/images', 'public');
         }
 
-        // لو فيه feature video جديدة ارفعها
         if ($request->hasFile('feature_video')) {
-            $featureVideoPath = $request->file('feature_video')->store('articles/videos', 'public');
-            $article->feature_video = $featureVideoPath;
+            if($article->feature_video) Storage::disk('public')->delete($article->feature_video);
+            $article->feature_video = $request->file('feature_video')->store('articles/videos', 'public');
         }
 
-        // content
         $content = $request->has('content')
             ? json_decode($request->input('content'), true)
             : $article->content;
 
-        // نحدث الصور والفيديوهات لو فيه جديد
         foreach ($content as $i => &$item) {
-            $item['title'] = $item['title'] ?? null;
-            $item['text'] = $item['text'] ?? null;
+            // تحديث الكود البرمجي: لو بعت كود جديد استخدمه، لو مبعتش حافظ على القديم
+            $item['code'] = array_key_exists('code', $item) ? $item['code'] : ($article->content[$i]['code'] ?? null);
 
-            // صور جديدة
             if ($request->hasFile("content_images.$i")) {
-                $images = [];
+                $newImages = [];
                 foreach ($request->file("content_images.$i") as $imageFile) {
-                    $path = $imageFile->store('articles/images', 'public');
-                    $images[] = asset('storage/' . $path);
+                    $newImages[] = $imageFile->store('articles/images', 'public');
                 }
-                $item['images'] = array_merge($item['images'] ?? [], $images);
+                $item['images'] = array_merge($item['images'] ?? [], $newImages);
             }
 
-            // فيديوهات جديدة
             if ($request->hasFile("content_videos.$i")) {
-                $videos = [];
+                $newVideos = [];
                 foreach ($request->file("content_videos.$i") as $videoFile) {
-                    $path = $videoFile->store('articles/videos', 'public');
-                    $videos[] = asset('storage/' . $path);
+                    $newVideos[] = $videoFile->store('articles/videos', 'public');
                 }
-                $item['videos'] = array_merge($item['videos'] ?? [], $videos);
+                $item['videos'] = array_merge($item['videos'] ?? [], $newVideos);
             }
         }
 
-        // تحديث باقي الحقول
         $article->update([
             'title' => $request->title ?? $article->title,
             'excerpt' => $request->excerpt ?? $article->excerpt,
@@ -174,115 +155,71 @@ class ArticleController extends Controller
             'tags' => $request->tags ?? $article->tags,
         ]);
 
-        return response()->json([
-            'message' => 'Article updated successfully'
-        ], 200);
+        return response()->json(['message' => 'Article updated successfully'], 200);
     }
 
-    // ===============================
-    // ===============================
-    // ===============================
-    // ===============================
-    // ===============================
-
+    /**
+     * حذف المقال ومرفقاته
+     */
     public function destroy($id)
     {
         $article = Article::find($id);
+        if (!$article) return response()->json(['message' => 'Article not found'], 404);
 
-        if (!$article) {
-            return response()->json(['message' => 'Article not found'], 404);
-        }
+        if ($article->feature_image) Storage::disk('public')->delete($article->feature_image);
+        if ($article->feature_video) Storage::disk('public')->delete($article->feature_video);
 
-        // حذف الصور والفيديوهات لو موجودة
-        if ($article->feature_image && file_exists(storage_path('app/public/' . $article->feature_image))) {
-            unlink(storage_path('app/public/' . $article->feature_image));
-        }
-
-        if ($article->feature_video && file_exists(storage_path('app/public/' . $article->feature_video))) {
-            unlink(storage_path('app/public/' . $article->feature_video));
-        }
-
-        // حذف المقال نفسه
+        // ملاحظة: لو الصور اللي جوه الـ content مش هتحتاجها تاني، ممكن تعمل loop هنا وتحذفها برضه
+        
         $article->delete();
-
         return response()->json(['message' => 'Article deleted successfully'], 200);
     }
-  
-/////////////////////////////////////////////////////////////////////////////////////
 
+    /**
+     * عرض مقال واحد وتسجيل مشاهدة
+     */
     public function show(Request $request, $id)
     {
         $article = Article::find($id);
+        if (!$article) return response()->json(['message' => 'Article not found'], 404);
 
-        if (!$article) {
-            return response()->json(['message' => 'Article not found'], 404);
-        }
-
-        // ✅ الخطوة الجديدة: تسجيل المشاهدة لو الـ IP أول مرة يشوف المقال
         $ip = $request->ip();
-
-        $alreadyViewed = \App\Models\ArticleView::where('article_id', $article->id)
-            ->where('ip_address', $ip)
-            ->exists();
+        $alreadyViewed = ArticleView::where('article_id', $article->id)->where('ip_address', $ip)->exists();
 
         if (!$alreadyViewed) {
-            // أول مرة الزائر يشوف المقال
-            ArticleView::create([
-                'article_id' => $article->id,
-                'ip_address' => $ip,
-            ]);
-
-            // نحدّث عداد المشاهدات العام
+            ArticleView::create(['article_id' => $article->id, 'ip_address' => $ip]);
             $article->increment('views');
         }
 
         return response()->json([
             'message' => 'Article fetched successfully',
-            'data' => new \App\Http\Resources\ArticleResource($article),
-            // 'your_ip' => $request->ip()
-
+            'data' => new ArticleResource($article) 
         ], 200);
     }
 
+    /**
+     * نظام الإعجاب (Toggle Like)
+     */
+    public function toggleLike(Request $request, $id)
+    {
+        $article = Article::find($id);
+        if (!$article) return response()->json(['message' => 'Article not found'], 404);
 
-    
-public function toggleLike(Request $request, $id)
-{
-    $article = Article::find($id);
+        $ip = $request->ip();
+        $existingLike = ArticleLike::where('article_id', $id)->where('ip_address', $ip)->first();
 
-    if (!$article) {
-        return response()->json(['message' => 'Article not found'], 404);
-    }
+        if ($existingLike) {
+            $existingLike->delete();
+            $liked = false;
+        } else {
+            ArticleLike::create(['article_id' => $id, 'ip_address' => $ip]);
+            $liked = true;
+        }
 
-    $ip = $request->ip();
-
-    // هل الشخص دا عامل لايك قبل كده؟
-    $existingLike = ArticleLike::where('article_id', $id)
-        ->where('ip_address', $ip)
-        ->first();
-
-    if ($existingLike) {
-        // لو عامل → نحذف اللايك (يعني UnLike)
-        $existingLike->delete();
-        $liked = false;
-    } else {
-        // لو مش عامل → نضيف لايك جديد
-        ArticleLike::create([
-            'article_id' => $id,
-            'ip_address' => $ip,
+        return response()->json([
+            'message' => $liked ? 'Article liked' : 'Like removed',
+            'liked' => $liked,
+            'likes_count' => ArticleLike::where('article_id', $id)->count(),
         ]);
-        $liked = true;
     }
-
-    // نحسب عدد اللايكات الحالي
-    $likeCount = ArticleLike::where('article_id', $id)->count();
-
-    return response()->json([
-        'message' => $liked ? 'Article liked' : 'Like removed',
-        'liked' => $liked,
-        'likes_count' => $likeCount,
-    ]);
 }
-    
-}
-

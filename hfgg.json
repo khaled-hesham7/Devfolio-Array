@@ -1,0 +1,198 @@
+
+const blogs = [
+  {
+    title:
+      "Closure Demystified: The Behind-the-Scenes JavaScript You Don't See",
+    excerpt:
+      "Learn the concept of Closure in JavaScript in a simple and practical way. A detailed explanation with real-life examples shows how Closure works behind the scenes and its most important programming uses, such as data hiding, state management, and async handling.",
+    date: "2024-03-18",
+    readTime: "9 min read",
+    slug: "closure-demystified",
+    banner: {
+      type: "image",
+      url: "/images/closure-demystified.png",
+      alt: "Closure Demystified illustration",
+    },
+    content: [
+      {
+        type: "heading",
+        id: "intro",
+        content: "Introduction",
+      },
+      {
+        type: "text",
+        id: 1,
+        content:
+          "If you've worked with JavaScript for a while, you've probably come across the word \"Closure,\" which can sometimes make you feel like it's something mysterious or complex. But the truth is, the Closure is a very simple concept, and once you understand it, you'll discover how powerful and useful it is in your code. In this article, we'll talk about Closure as if we were telling a story. We'll start with very simple examples and without complicated terminology, then dive behind the scenes to see how it actually works and why it's important in our lives as programmers.",
+      },
+      {
+        type: "image",
+        id: "img-1",
+        url: "/images/Closure_JS.png",
+        alt: "Closure in JavaScript",
+        caption: "Understanding Closure in JavaScript",
+      },
+      {
+        type: "heading",
+        id: "scratch",
+        content: "Closure without complexity: Let's start from scratch",
+      },
+      {
+        type: "text",
+        id: 2,
+        content:
+          "A closure is simply a function that carries over the environment in which it was defined even after the function that created it has finished executing. This means that the inner function can access the variables that were present at the time it was defined, even if the outer function returns and has finished executing.",
+      },
+      {
+        type: "code",
+        language: "javascript",
+        id: 3,
+        content: `function outer() {
+  let x = 10;
+  function inner() {
+    return x;
+  }
+  return inner;
+}
+
+const fn = outer();//The outer function has finished executing and returned the inner function code.
+console.log(fn()); // 10`,
+      },
+
+      {
+        type: "text",
+        id: 4,
+        content:
+          "What happened in order:\n1. First, we defined the outer function – inside it, we declared the variable `x` and also defined the inner function.\n2. When we called the outer function, the variable `x` was set to 10.\n3. At the moment the inner function was defined, it gained access to `x` (the entire outer environment) and could also modify it.\n4. The outer function then returned the inner function as a value, and was removed from the call stack.\n5. But… since the inner function still has access to `x`, JavaScript said: “Wait, I can’t delete the outer environment (the place where the variables are stored). Keep it in the heap until the inner function is no longer accessible.”\n6. So, when we call `fn()` (which is actually the inner function), it retrieves `x` from the outer environment.",
+      },
+      {
+        type: "heading",
+        id: "closure-interview",
+        content: "A classic interview example about closure",
+      },
+      {
+        type: "code",
+        language: "javascript",
+        id: 3,
+        content: `for (var i = 0; i < 3; i++) {
+  setTimeout(function() {
+    console.log(i);
+  }, 1000);
+}`,
+      },
+      {
+        type: "text",
+        id: 4,
+        content:
+          "Can you tell me what the output of this code will be?\nUnexpectedly, the output will be:",
+      },
+      {
+        type: "code",
+        language: "javascript",
+        id: 5,
+        content: `
+//3
+//3
+//3`,
+      },
+      {
+        type: "text",
+        id: 6,
+        content:
+          "Why did that happen?!\nIn fact, the problem is not in the closure.\nThe closure here is the function inside the setTimeout, which can access variables outside its scope even after the loop has finished executing completely.",
+      },
+      {
+        type: "text",
+        id: 7,
+        content:
+          "To understand this example, we need to understand how JavaScript works behind the scenes.\nLet's learn about these concepts.",
+      },
+      {
+        type: "heading",
+        id: "secret-theater",
+        content: "The Secret Theater of JavaScript",
+      },
+      {
+        type: "text",
+        id: 8,
+        content:
+          "1. Call Stack: The place where the current code is executed step by step.\n2. Web APIs / Host APIs: Browser or Node services that deal with timing (setTimeout), DOM Events, and fetch.\n3. Task Queue: The queue where callbacks are collected, ready to be executed after the main code is finished.\n4. Event Loop: The mechanism that monitors the Call Stack, and if it is empty, moves the first task from the Task Queue to the Call Stack.",
+      },
+      {
+        type: "text",
+        id: 9,
+        content:
+          "If you don't understand 100% of what I'm saying, don't worry... I'll explain it to you in simple Egyptian\n(or peasant way 😂) so that the picture is clearer.",
+      },
+      {
+        type: "text",
+        id: 9,
+        content:
+          "Imagine we are sitting in a theater…\nThere is a stage, actors, backstage, and a theater manager who organizes everything.\nJavaScript works in almost the same way!\n Let's divide the scene:\n1. Call Stack (stage): This is the only place where actors (functions) can stand and speak in front of the audience.\nThe rule: “No more than one actor can be on stage at a time.”\nAny actor who comes on stage must finish their role before the next one.\n2. Web APIs / Host APIs (Backstage): This is where the technicians and stagehands prepare things that are not directly on stage.\nExample: The director says, “In 2 seconds, bring in a new actor” → The technicians (setTimeout) start preparing backstage.\nOr: “When the audience clicks the button, prepare a new scene” → Backstage records the event and gets ready.\n3. Task Queue: When the technicians prepare an actor, he does not go on stage immediately.\nHe is placed first in the queue outside the stage.This queue is organized: the first actor to arrive is the first to go on stage.\n4. Event Loop (Stage Manager):This is the stage manager 👨‍💼.He stands watching the stage: “Is it empty or is there still an actor working?”\nIf the stage is empty → he calls the first actor in the queue and brings him on.\nHe repeats the process throughout the show: watch → if empty → bring on a new actor.",
+      },
+      {
+        type: "text",
+        id: 10,
+        content:
+          "Now that we have explained how JavaScript works, let's return to the example.",
+      },
+      {
+        type: "code",
+        language: "javascript",
+        id: 3,
+        content: `for (var i = 0; i < 3; i++) {
+  setTimeout(function() {
+    console.log(i);
+  }, 1000);
+}
+//3
+//3
+//3`,
+      },
+      {
+        type: "text",
+        id: 11,
+        content:
+          "The show begins. The loop enters the stage (Call Stack) and the first iteration begins.\nsetTimeout appears on stage.\nBut it's a smart actor: he doesn't do the colback himself.\nInstead, he says: “Hey Web APIs, after 100ms, bring me this function (() => console.log(i))!”\nThen setTimeout exits the stage, The loop completes the second iteration, then the third with the same scenario.\nAfter the loop ends, the last actor exits, Here, the variable i has reached the value 3.",
+      },
+      {
+        type: "text",
+        id: 12,
+        content:
+          "Behind the scenes, each setTimeout call starts its own 100ms timer.\nWhen the counters run out, the technicians behind the scenes say:“We've finished preparing the callback!”\nSend the completed callbacks to the Task Queue.\nNow, in front of the theater door(Task Queue), there are three actors (the callbacks), each of whom is:\n() => console.log(i) lined up in a queue waiting for permission to enter.\nThe theater manager (Event Loop) monitors the situation: “Is the theater (Call Stack) empty?”\nYes, after the loop ended, it became empty.\nSo the manager begins to bring in the actors from the queue one by one.",
+      },
+      {
+        type: "text",
+        id: 13,
+        content:
+          "The first colpack enters the stage and executes console.log(i)\nBut surprise: all callbacks refer to the same binding for variable i (because we used var)\nAnd the value of this variable has already become 3 after the loop ends.\nSo each of the three actors says the same sentence:\n//3\n//3\n//3",
+      },
+      {
+        type: "heading",
+        id: "summary",
+        content: "Summary",
+      },
+      {
+        type: "text",
+        id: 14,
+        content:
+          "In the end, closure is not just a technical concept in JavaScript, but a cornerstone for understanding how the language handles variables and their lifetime.\nIt gives us the ability to preserve values over time and write flexible and elegant code.\n\nIn our journey with it, we also touched on the mechanisms that drive all of this behind the scenes: the call stack, Web APIs, task queue, and event loop.\nA deep understanding of both parts together allows you to see JavaScript not just as commands, but as an entire theater that controls every scene and its timing.mThank you for reading.\n\nby: Youssef El-Mahmoudi",
+      },
+      // {
+      //   type: "external-video",
+      //   id: "vid-1",
+      //   url: "https://www.youtube.com/embed/8aGhZQkoFbQ",
+      //   caption: "Dan Abramov explaining React Fiber",
+      // },
+      // {
+      //   type: "internal-video",
+      //   id: "vid-1",
+      //   url: "https://www.youtube.com/embed/8aGhZQkoFbQ",
+      //   caption: "Dan Abramov explaining React Fiber",
+      // },
+    ],
+    lang: "en",
+  },
+];
+
+export default blogs;
