@@ -19,8 +19,11 @@ class ArticleController extends Controller
         $request->validate([
             'title' => 'required|string|max:255',
             'excerpt' => 'required|string',
-            'lang' => 'required|string',
-            'content' => 'required|json', 
+            'lang' => 'nullable|string',
+            'content' => 'nullable|array', 
+            'content.*.text' => 'nullable|string',
+            'content.*.title' => 'nullable|string',
+            'content.*.code' => 'nullable|string',
             'tags' => 'nullable|array',
             'feature_image' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp',
             'feature_video' => 'nullable|file|mimes:mp4,mov,avi,wmv',
@@ -37,7 +40,8 @@ class ArticleController extends Controller
             ? $request->file('feature_video')->store('articles/videos', 'public')
             : null;
 
-        $content = json_decode($request->input('content'), true) ?? [];
+          
+        $content = $request->input('content', []);
 
         foreach ($content as $i => &$item) {
             $item['title'] = $item['title'] ?? null;
@@ -60,6 +64,8 @@ class ArticleController extends Controller
             }
             $item['videos'] = $videos;
         }
+
+        unset($item);
 
         $article = Article::create([
             'title' => $request->title,
@@ -108,7 +114,7 @@ class ArticleController extends Controller
 
         $request->validate([
             'title' => 'sometimes|required|string|max:255',
-            'content' => 'nullable|json',
+            'content' => 'nullable|array',
         ]);
 
         if ($request->hasFile('feature_image')) {
@@ -122,12 +128,12 @@ class ArticleController extends Controller
             $article->feature_video = $request->file('feature_video')->store('articles/videos', 'public');
         }
 
-        $content = $request->has('content')
-            ? json_decode($request->input('content'), true)
-            : $article->content;
+            $content = $request->input('content', $article->content);
 
         foreach ($content as $i => &$item) {
             // تحديث الكود البرمجي: لو بعت كود جديد استخدمه، لو مبعتش حافظ على القديم
+            $item['text'] = array_key_exists('text', $item) ? $item['text'] : ($article->content[$i]['text'] ?? null);
+            $item['title'] = array_key_exists('title', $item) ? $item['title'] : ($article->content[$i]['title'] ?? null);
             $item['code'] = array_key_exists('code', $item) ? $item['code'] : ($article->content[$i]['code'] ?? null);
 
             if ($request->hasFile("content_images.$i")) {
@@ -146,7 +152,7 @@ class ArticleController extends Controller
                 $item['videos'] = array_merge($item['videos'] ?? [], $newVideos);
             }
         }
-
+                unset($item) ;
         $article->update([
             'title' => $request->title ?? $article->title,
             'excerpt' => $request->excerpt ?? $article->excerpt,
